@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /api/
+
+# Production host (update on deploy if the Vercel domain changes).
+Sitemap: https://vidiomaker.app/sitemap.xml

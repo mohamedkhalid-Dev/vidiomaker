@@ -1,0 +1,38 @@
+# ---> Node / Next
+node_modules/
+.next/
+out/
+*.log
+
+# ---> Env / secrets (never commit real .env)
+.env
+.env.local
+.env.*.local
+!.env.example
+frontend/.env.local
+backend/.env
+
+# ---> PHP / Laravel
+vendor/
+backend/vendor/
+backend/storage/*.key
+backend/storage/framework/cache/*
+backend/storage/framework/sessions/*
+backend/storage/framework/views/*
+backend/storage/logs/*
+backend/.phpunit.result.cache
+backend/.php-cs-fixer.cache
+
+# ---> Vidiomaker media outputs (regenerated, never commit)
+*.mp4
+*.mp3
+*.wav
+storage/*.jpg
+backend/storage/app/videos/
+
+# ---> OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp

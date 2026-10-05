@@ -1,0 +1,668 @@
+:root {
+  --bg: #000000;
+  --text: #b8b8b8;
+  --muted: #9e9e9e;
+  --card: #111111;
+  --border: #2a2a2a;
+  --accent: #d4d4d4;
+  --button-bg: #1a1a1a;
+  --error-border: #5a2a2a;
+  --error-bg: #1a1111;
+  --error-text: #d4a0a0;
+
+  /* Clean spacing scale (4pt base). */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.5rem;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+  min-height: 100%;
+  overflow-x: clip;
+}
+
+body {
+  line-height: 1.5;
+}
+
+h1,
+h2,
+h3 {
+  color: var(--accent);
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+a {
+  color: var(--text);
+  text-decoration: none;
+}
+
+a:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* Clear keyboard focus everywhere (a11y). */
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+summary:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Media never causes horizontal overflow at 360px. */
+img,
+video {
+  max-width: 100%;
+  height: auto;
+}
+
+video {
+  display: block;
+  width: 100%;
+  background: #000000;
+}
+
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+select option {
+  background: #111111;
+  color: var(--text);
+}
+
+/* Skip link: visible only on keyboard focus. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  background: var(--button-bg);
+  color: var(--accent);
+  padding: var(--space-3) var(--space-4);
+  z-index: 100;
+  border: 1px solid var(--border);
+  border-radius: 0 0 8px 0;
+}
+
+.skip-link:focus,
+.skip-link:focus-visible {
+  left: 0;
+}
+
+/* ---- Header (static, not sticky — simplest, never overlaps) ---- */
+.site-header {
+  position: static;
+  border-bottom: 1px solid var(--border);
+  background: #000000;
+}
+
+.site-header-inner {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.site-header-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Focal point: brand is the first thing the eye sees. */
+.site-brand {
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.site-status {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Visual hierarchy: nav is second, single row on desktop. */
+.site-nav {
+  display: flex;
+  gap: var(--space-1);
+}
+
+.nav-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  border: 1px solid transparent;
+  color: var(--muted);
+}
+
+/* Clear active state: contrast + underline + border. */
+.nav-link.active {
+  color: var(--accent);
+  border-color: var(--border);
+  background: var(--card);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.nav-link:hover {
+  color: var(--accent);
+}
+
+/* Shared status pill (KeyIndicator + AuthButton badge). */
+.key-indicator,
+.auth-badge {
+  font-size: 0.85rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  background: var(--card);
+  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  white-space: nowrap;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ---- Auth (class-based, no inline styles) ---- */
+.auth-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.auth-form {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.auth-btn {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  color: var(--accent);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.auth-btn-ghost {
+  background: transparent;
+  color: var(--muted);
+}
+
+.auth-label {
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.auth-input {
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: #000000;
+  color: var(--accent);
+  font-size: 0.9rem;
+  width: 180px;
+  max-width: 100%;
+}
+
+.auth-msg {
+  font-size: 0.8rem;
+  color: var(--muted);
+  width: 100%;
+}
+
+.auth-msg-ok {
+  color: var(--accent);
+}
+
+.auth-msg-error {
+  color: var(--error-text);
+}
+
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+/* Buttons: single style, >=44px tap targets. */
+button,
+.button {
+  background-color: var(--button-bg);
+  color: var(--text);
+  border: 1px solid #808080;
+  border-radius: 8px;
+  padding: 0.65rem 1.1rem;
+  min-height: 44px;
+  min-width: 44px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+button:hover,
+.button:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cards */
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: var(--space-4);
+  min-width: 0;
+}
+
+/* Wizard steps */
+.wizard-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-2);
+  padding: 0;
+  margin: var(--space-4) 0;
+}
+
+.wizard-steps li {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.6rem;
+  text-align: center;
+  background: var(--card);
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.wizard-steps li.active {
+  color: var(--accent);
+  border-color: var(--muted);
+}
+
+/* Friendly error box (rendered by <ErrorAlert/>). */
+.error-box {
+  border: 1px solid var(--error-border);
+  background-color: var(--error-bg);
+  color: var(--error-text);
+  border-radius: 8px;
+  padding: var(--space-3) var(--space-4);
+  margin: var(--space-4) 0;
+  line-height: 1.5;
+}
+
+.error-box a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* 422 validation highlight. */
+.field-invalid {
+  border-color: var(--error-border) !important;
+}
+
+/* CSS Ken Burns placeholder animation */
+@keyframes kenburns {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.3);
+  }
+}
+
+.kenburns-preview {
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+
+.kenburns-preview img {
+  width: 100%;
+  height: auto;
+  display: block;
+  animation: kenburns 6s ease-in-out infinite alternate;
+}
+
+/* Footer: minimal single line. */
+.site-footer {
+  border-top: 1px solid var(--border);
+  background: #000000;
+  padding: var(--space-4);
+  text-align: center;
+}
+
+.site-footer p {
+  margin: 0 auto;
+  max-width: 960px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+/* History grid (1 col @360px → 2/3 col desktop). */
+.vm-history-grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: 1fr;
+}
+
+.vm-history-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.vm-history-media {
+  background: #000000;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 9 / 16;
+  max-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.vm-history-media video,
+.vm-history-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.vm-history-placeholder {
+  color: var(--muted);
+  font-size: 0.9rem;
+  padding: var(--space-4);
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.vm-history-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.vm-history-meta {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.vm-history-model {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+  word-break: break-all;
+}
+
+.vm-status-badge {
+  border: 1px solid var(--border);
+  background: var(--button-bg);
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  font-size: 0.8rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.vm-history-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.vm-history-actions .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+/* Single primary action (Download) — high contrast on black theme. */
+.vm-btn-primary {
+  background: #d4d4d4;
+  background-color: #d4d4d4;
+  color: #000;
+  border-color: #d4d4d4;
+  font-weight: 600;
+}
+
+a.vm-btn-primary:hover,
+button.vm-btn-primary:hover {
+  background: #fff;
+  color: #000;
+  border-color: #fff;
+}
+
+/* Secondary actions tucked behind <details> to keep cards scannable. */
+.vm-more,
+.vm-vp-more {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.vm-more summary,
+.vm-vp-more summary {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 1rem;
+  cursor: pointer;
+  color: var(--muted);
+}
+
+.vm-more-actions,
+.vm-vp-more-actions {
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  padding: 0 0.6rem 0.6rem;
+}
+
+/* Settings + generic details: 44px summary target, no overflow @360px. */
+details summary {
+  min-height: 44px;
+  overflow-wrap: anywhere;
+}
+
+details pre,
+details code {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+}
+
+.vm-history-shimmer {
+  border: 1px solid var(--border);
+  background: linear-gradient(100deg, #111111 30%, #1a1a1a 50%, #111111 30%);
+  background-size: 200% 100%;
+  animation: vm-shimmer 1.4s linear infinite;
+}
+
+@keyframes vm-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+.video-frame {
+  width: 100%;
+  background-color: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.video-frame.vertical {
+  aspect-ratio: 9 / 16;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.video-frame.horizontal {
+  aspect-ratio: 16 / 9;
+}
+
+.video-frame video {
+  width: 100%;
+  height: 100%;
+  display: block;
+  background: #000000;
+}
+
+.skeleton-block {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: linear-gradient(100deg, #111111 30%, #1a1a1a 50%, #111111 30%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s linear infinite;
+  min-height: 220px;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@media (min-width: 640px) {
+  .vm-history-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .vm-history-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+/* Tablet / small screens */
+@media (max-width: 600px) {
+  .wizard-steps {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  main {
+    padding: var(--space-3);
+  }
+}
+
+/* Extra-small (360px): stacked header, full-width nav, no overflow. */
+@media (max-width: 400px) {
+  main {
+    padding: var(--space-2);
+  }
+
+  .card {
+    padding: var(--space-3);
+  }
+
+  .wizard-steps li {
+    font-size: 0.8rem;
+    padding: 0.4rem;
+  }
+
+  .site-header-inner {
+    padding: var(--space-2);
+  }
+
+  .site-header-top {
+    flex-wrap: wrap;
+  }
+
+  .site-nav {
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-1);
+  }
+
+  .nav-link {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .auth-input {
+    width: 100%;
+  }
+}
+
+/* Reduced motion: freeze all decorative animation. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

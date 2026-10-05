@@ -1,0 +1,9 @@
+{
+  "name": "vidiomaker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vidiomaker — AI Video Studio (root wrapper, see frontend/ + backend/)",
+  "scripts": {
+    "start": "npm --prefix frontend run dev"
+  }
+}
