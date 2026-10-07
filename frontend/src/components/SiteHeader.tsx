@@ -28,6 +28,7 @@ export default function SiteHeader(): React.ReactElement {
           </Link>
           <div className="site-status">
             <KeyIndicator />
+            <Link href="/login">Log in</Link>
             <AuthButton />
           </div>
         </div>

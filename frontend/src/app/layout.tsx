@@ -115,6 +115,10 @@ export default function RootLayout({
             <Link href="/history">Video history</Link>
             {" · "}
             <Link href="/settings">Settings</Link>
+            {" · "}
+            <Link href="/login">Log in</Link>
+            {" · "}
+            <Link href="/signup">Sign up</Link>
           </nav>
           <p>Vidiomaker — words in, vertical video out. Scripts via OpenRouter, stills via Cloudflare Workers AI, motion via Canvas.</p>
         </footer>

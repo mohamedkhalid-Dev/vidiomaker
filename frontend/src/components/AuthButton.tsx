@@ -1,101 +1,91 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { isSupabaseConfigured, supabase } from "../lib/supabase";
-import { createSupabaseBrowserClient } from "../lib/supabaseBrowser";
+import { useEffect, useRef, useState } from "react";
+import { isSupabaseConfigured } from "../lib/supabase";
+import { useMagicLinkAuth, validateAuthEmail } from "../lib/useAuth";
 
 /**
  * Supabase Auth UI — magic link / email OTP sign-in.
  *
  * - Sign-in via `signInWithOtp` with `emailRedirectTo` → /auth/callback
- *   (exchanges the PKCE code for a cookie session, see app/auth/callback).
- * - Shows the signed-in user email, or "Anonymous" when logged out / unconfigured.
- * - Fully optional: when Supabase env is missing it renders a disabled
+ *   (PKCE code exchange, see app/auth/callback). Auth state + send logic
+ *   live in `lib/useAuth.ts`; this component only renders UI.
+ * - Shows the signed-in email (avatar initial + address), or "Anonymous"
+ *   when logged out / unconfigured.
+ * - Fully optional: without Supabase env it renders a disabled
  *   "Anonymous" badge and never touches the network.
  */
 export default function AuthButton(): React.ReactElement {
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const { userEmail, authLoading, sending, signingOut, cooldownSeconds, sendMagicLink, signOut } =
+    useMagicLinkAuth();
   const [email, setEmail] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [fieldError, setFieldError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
-  const [messageKind, setMessageKind] = useState<"ok" | "error" | null>(null);
+  const [messageKind, setMessageKind] = useState<"ok" | "error" | "info" | null>(null);
   const [open, setOpen] = useState(false);
+  const emailInputRef = useRef<HTMLInputElement>(null);
 
+  const configured = isSupabaseConfigured();
+  const busy = sending || signingOut;
+
+  // Autofocus the email field whenever the panel opens.
   useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    let cancelled = false;
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
-        if (!cancelled) setUserEmail(data.user?.email ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setUserEmail(null);
-      });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUserEmail(session?.user?.email ?? null);
-    });
-    return () => {
-      cancelled = true;
-      listener.subscription.unsubscribe();
+    if (open && !userEmail) emailInputRef.current?.focus();
+  }, [open, userEmail]);
+
+  // Escape closes the panel (attached only while open).
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
     };
-  }, []);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open ]);
 
-  const handleSignIn = useCallback(async () => {
-    const clean = email.trim();
-    if (clean.length === 0 || !clean.includes("@")) {
-      setMessage("Enter a valid email to receive a sign-in link.");
-      setMessageKind("error");
-      return;
-    }
-    if (!isSupabaseConfigured()) {
-      setMessage("Auth is not configured (missing Supabase env). Continuing as Anonymous.");
-      setMessageKind("error");
-      return;
-    }
-    setBusy(true);
-    setMessage(null);
-    setMessageKind(null);
-    try {
-      const client = createSupabaseBrowserClient();
-      const { error } = await client.auth.signInWithOtp({
-        email: clean,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw error;
-      setMessage("Check your inbox for the sign-in link.");
-      setMessageKind("ok");
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Sign-in failed. Please retry.");
-      setMessageKind("error");
-    } finally {
-      setBusy(false);
-    }
-  }, [email]);
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    // Clear the inline error as soon as the value becomes valid.
+    if (fieldError && validateAuthEmail(value) === null) setFieldError(null);
+  };
 
-  const handleSignOut = useCallback(async () => {
-    if (!isSupabaseConfigured()) {
-      setUserEmail(null);
-      setOpen(false);
+  const handleSignIn = async () => {
+    if (sending) return; // prevent double-submit
+    const validationError = validateAuthEmail(email);
+    if (validationError) {
+      setFieldError(validationError);
+      setMessage(null);
+      setMessageKind(null);
+      emailInputRef.current?.focus();
       return;
     }
-    setBusy(true);
+    setFieldError(null);
+    setMessage("Sending sign-in link…");
+    setMessageKind("info");
+    const result = await sendMagicLink(email);
+    setMessage(result.message);
+    setMessageKind(result.kind);
+  };
+
+  const handleSignOut = async () => {
+    if (signingOut) return;
+    if (!window.confirm(`Sign out${userEmail ? ` (${userEmail})` : ""}?`)) return;
     try {
-      const client = createSupabaseBrowserClient();
-      await client.auth.signOut();
-      setUserEmail(null);
+      await signOut();
       setOpen(false);
       setMessage(null);
       setMessageKind(null);
+      setEmail("");
+      setFieldError(null);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Sign-out failed. Please retry.");
       setMessageKind("error");
-    } finally {
-      setBusy(false);
     }
-  }, []);
+  };
+
+  const avatarInitial = (userEmail ?? "?").trim().charAt(0).toUpperCase() || "?";
+  const resendLabel =
+    cooldownSeconds > 0 ? `Resend in ${cooldownSeconds}s` : sending ? "Sending…" : "Send link";
 
   if (!open) {
     return (
@@ -103,9 +93,15 @@ export default function AuthButton(): React.ReactElement {
         <span
           aria-live="polite"
           className="auth-badge"
-          title={userEmail ? `Signed in as ${userEmail}` : "Browsing anonymously (Supabase Auth optional)"}
+          title={
+            authLoading
+              ? "Checking sign-in…"
+              : userEmail
+                ? `Signed in as ${userEmail}`
+                : "Browsing anonymously (Supabase Auth optional)"
+          }
         >
-          {userEmail ?? "Anonymous"}
+          {authLoading ? "…" : (userEmail ?? "Anonymous")}
         </span>
         <button
           type="button"
@@ -123,16 +119,20 @@ export default function AuthButton(): React.ReactElement {
     <span className="auth-wrap">
       {userEmail ? (
         <>
-          <span aria-live="polite" className="auth-badge">
+          <span aria-live="polite" className="auth-badge" title={`Signed in as ${userEmail}`}>
+            <span aria-hidden="true">{avatarInitial}</span>
+            <span>&nbsp;</span>
             {userEmail}
           </span>
           <button
             type="button"
             onClick={() => void handleSignOut()}
-            disabled={busy}
+            disabled={signingOut}
+            aria-busy={signingOut}
+            aria-label={`Sign out (${userEmail})`}
             className="auth-btn"
           >
-            {busy ? "…" : "Sign out"}
+            {signingOut ? "Signing out…" : "Sign out"}
           </button>
           <button
             type="button"
@@ -155,21 +155,37 @@ export default function AuthButton(): React.ReactElement {
             Email link
           </label>
           <input
+            ref={emailInputRef}
             id="vm-auth-email"
             type="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => handleEmailChange(e.target.value)}
             placeholder="you@example.com"
             autoComplete="email"
+            required
+            maxLength={254}
+            disabled={sending}
+            aria-invalid={fieldError ? true : undefined}
+            aria-describedby={fieldError ? "vm-auth-email-error" : "vm-auth-email-hint"}
             className="auth-input"
           />
+          <span id="vm-auth-email-hint" hidden>
+            We email you a sign-in link that expires in 1 hour.
+          </span>
           <button
             type="submit"
-            disabled={busy}
-            aria-busy={busy}
+            disabled={sending || cooldownSeconds > 0}
+            aria-busy={sending}
+            title={
+              !configured
+                ? "Sign-in is not configured on this site"
+                : cooldownSeconds > 0
+                  ? `Wait ${cooldownSeconds}s before resending`
+                  : "Email me a sign-in link"
+            }
             className="auth-btn"
           >
-            {busy ? "Sending…" : "Send link"}
+            {resendLabel}
           </button>
           <button
             type="button"
@@ -181,10 +197,22 @@ export default function AuthButton(): React.ReactElement {
           </button>
         </form>
       )}
+      {fieldError ? (
+        <span id="vm-auth-email-error" role="alert" className="auth-msg auth-msg-error">
+          {fieldError}
+        </span>
+      ) : null}
       {message ? (
         <span
-          role="status"
-          className={messageKind === "error" ? "auth-msg auth-msg-error" : messageKind === "ok" ? "auth-msg auth-msg-ok" : "auth-msg"}
+          role={messageKind === "error" ? "alert" : "status"}
+          aria-live="polite"
+          className={
+            messageKind === "error"
+              ? "auth-msg auth-msg-error"
+              : messageKind === "ok"
+                ? "auth-msg auth-msg-ok"
+                : "auth-msg"
+          }
         >
           {message}
         </span>
