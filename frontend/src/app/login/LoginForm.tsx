@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import SocialLoginButton from "@/components/SocialLoginButton";
 import { isSupabaseConfigured } from "@/lib/supabase";
 import { validateAuthEmail } from "@/lib/useAuth";
 import { safeNextPath, toFriendlyPasswordAuthError } from "@/lib/authErrors";
@@ -61,6 +62,10 @@ export default function LoginForm({ next }: { next?: string }): React.ReactEleme
 
   return (
     <div className="card">
+      <SocialLoginButton next={next} />
+      <p className="auth-msg" style={{ textAlign: "center", margin: "0.5rem 0" }}>
+        or continue with email
+      </p>
       {!configured ? (
         <p role="note" className="error-box" style={{ marginTop: 0 }}>
           Auth not configured on this site (missing Supabase settings). The form is disabled.
