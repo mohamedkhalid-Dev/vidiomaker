@@ -111,10 +111,11 @@ export default function ForgotPasswordForm(): React.ReactElement {
         >
           <div style={{ display: "grid", gap: "0.25rem" }}>
             <label htmlFor="forgot-email" className="auth-label">
-              Email
+              Email address
             </label>
             <input
               id="forgot-email"
+              name="email"
               type="email"
               autoComplete="email"
               required
@@ -149,8 +150,11 @@ export default function ForgotPasswordForm(): React.ReactElement {
           {notice}
         </p>
       ) : null}
-      <p className="auth-msg" style={{ marginTop: "0.75rem" }}>
+      <p className="auth-msg" style={{ marginTop: "0.75rem", textAlign: "center" }}>
         Remembered it? <Link href="/login">Back to log in</Link>
+      </p>
+      <p className="auth-msg" style={{ marginTop: "0.25rem", textAlign: "center" }}>
+        No account yet? <Link href="/signup">Create an account</Link>
       </p>
     </div>
   );

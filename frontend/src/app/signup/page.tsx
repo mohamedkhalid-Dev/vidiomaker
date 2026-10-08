@@ -20,7 +20,10 @@ export default function SignupPage({
   const next = typeof searchParams?.next === "string" ? searchParams.next : undefined;
   return (
     <section aria-labelledby="signup-heading" style={{ maxWidth: "28rem", margin: "0 auto" }}>
-      <h1 id="signup-heading">Sign up</h1>
+      <h1 id="signup-heading">Create your account</h1>
+      <p className="auth-msg" style={{ marginBottom: "1rem" }}>
+        Sign up with Google, or continue with your email and password.
+      </p>
       <SignupForm next={next} />
     </section>
   );

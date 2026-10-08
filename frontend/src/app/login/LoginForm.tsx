@@ -62,10 +62,20 @@ export default function LoginForm({ next }: { next?: string }): React.ReactEleme
 
   return (
     <div className="card">
-      <SocialLoginButton next={next} />
-      <p className="auth-msg" style={{ textAlign: "center", margin: "0.5rem 0" }}>
-        or continue with email
-      </p>
+      {/* 1. Social login is the primary entry — always on top. */}
+      <SocialLoginButton next={next} label="Continue with Google" />
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="or continue with email"
+        style={{ display: "flex", alignItems: "center", gap: "0.75rem", margin: "0.75rem 0" }}
+      >
+        <span aria-hidden="true" style={{ flex: "1 1 auto", borderTop: "1px solid currentColor", opacity: 0.25 }} />
+        <span className="auth-msg" style={{ margin: 0 }}>
+          or continue with email
+        </span>
+        <span aria-hidden="true" style={{ flex: "1 1 auto", borderTop: "1px solid currentColor", opacity: 0.25 }} />
+      </div>
       {!configured ? (
         <p role="note" className="error-box" style={{ marginTop: 0 }}>
           Auth not configured on this site (missing Supabase settings). The form is disabled.
@@ -82,10 +92,11 @@ export default function LoginForm({ next }: { next?: string }): React.ReactEleme
         >
           <div style={{ display: "grid", gap: "0.25rem" }}>
             <label htmlFor="login-email" className="auth-label">
-              Email
+              Email address
             </label>
             <input
               id="login-email"
+              name="email"
               type="email"
               autoComplete="email"
               required
@@ -101,12 +112,18 @@ export default function LoginForm({ next }: { next?: string }): React.ReactEleme
             />
           </div>
           <div style={{ display: "grid", gap: "0.25rem" }}>
-            <label htmlFor="login-password" className="auth-label">
-              Password
-            </label>
+            <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: "0.5rem" }}>
+              <label htmlFor="login-password" className="auth-label">
+                Password
+              </label>
+              <Link href="/forgot-password" className="auth-msg" style={{ fontSize: "0.875rem" }}>
+                Forgot password?
+              </Link>
+            </div>
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <input
                 id="login-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="current-password"
                 required
@@ -142,10 +159,11 @@ export default function LoginForm({ next }: { next?: string }): React.ReactEleme
           {formError}
         </p>
       ) : null}
-      <p className="auth-msg" style={{ marginTop: "0.75rem" }}>
-        New here? <Link href={signupHref}>Create an account</Link>
-        {" · "}
-        <Link href="/forgot-password">Forgot password?</Link>
+      <p className="auth-msg" style={{ marginTop: "0.75rem", textAlign: "center" }}>
+        New to Vidiomaker? <Link href={signupHref}>Create an account</Link>
+      </p>
+      <p className="auth-msg" style={{ marginTop: "0.25rem", textAlign: "center" }}>
+        Trouble logging in? <Link href="/forgot-password">Reset your password</Link>
       </p>
     </div>
   );

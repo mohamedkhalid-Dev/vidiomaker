@@ -1,7 +1,7 @@
 # Vidiomaker — Site File Structure Map
 
 > Generated 2026-10-01. Excludes `node_modules/`, `.next/`, `.git/`.
-> Stack: Next.js 14 frontend + Supabase (Postgres + Storage) + Canvas/MediaRecorder rendering. No Laravel backend — API lives in Next.js Route Handlers.
+> Stack: Next.js 14 frontend + Supabase (Postgres + Storage) + ffmpeg.wasm. No Laravel backend — API lives in Next.js Route Handlers.
 
 ## Root `vidiomaker/`
 
@@ -16,7 +16,7 @@ vidiomaker/
 │   ├── migration_002_video_url.sql
 │   └── storage.md                 # uploads/ + renders/ private buckets guide
 └── frontend/                # deploy this folder to Vercel (Next.js)
-    ├── package.json         # next 14.2.5, react 18, @supabase/supabase-js
+    ├── package.json         # next 14.2.5, react 18, @ffmpeg/ffmpeg, @supabase/supabase-js
     ├── package-lock.json
     ├── next.config.mjs
     ├── tsconfig.json
@@ -51,7 +51,7 @@ vidiomaker/
         │   ├── CustomInstructions.tsx         # stylePreset, tone, language, audience
         │   ├── ScriptEditor.tsx               # inline scene edit, per-scene regen
         │   ├── ImageGrid.tsx                  # stills grid, per-card Retry/Regen
-        │   ├── VideoPreview.tsx               # CSS Ken Burns preview → Canvas + MediaRecorder MP4 + download
+        │   ├── VideoPreview.tsx               # CSS Ken Burns preview → ffmpeg.wasm MP4 + download
         │   ├── HistoryList.tsx                # Supabase videos + scene count, video/download/delete
         │   ├── AuthButton.tsx
         │   ├── KeyIndicator.tsx               # header ● Key set / ○ No key
@@ -66,7 +66,7 @@ vidiomaker/
             ├── cloudflare.ts          # IMAGE_MODEL_STORAGE_KEY, normalizeImageModel
             ├── images.ts              # generateAllSceneImages, regenerateSceneImage, persistSceneImage
             ├── render.ts              # render orchestration
-            ├── render.ts              # Canvas 2D + MediaRecorder MP4 (no wasm, no COOP/COEP)
+            ├── ffmpeg.ts              # ffmpeg.wasm single-threaded (-threads 1, no COOP/COEP)
             ├── supabase.ts            # browser client (URL + anon key only)
             ├── types.ts               # VideoOptions, VideoAspect, limits, presets
             ├── customInstructions.ts  # load/save/sanitize localStorage defaults
@@ -76,20 +76,20 @@ vidiomaker/
 ## Routes (URLs)
 
 | URL | File | Purpose |
-|-----|------|---------|
-| `/` | `src/app/page.tsx` | Main 4-step wizard |
-| `/create` | `src/app/create/page.tsx` | Same wizard, clean URL + canonical |
+|| `/create` | `src/app/create/page.tsx` | Same wizard, clean URL + canonical |
 | `/history` | `src/app/history/page.tsx` | Video history, preview, download |
 | `/settings` | `src/app/settings/page.tsx` | Keys + defaults |
 | `/api/generate-script` | `src/app/api/generate-script/route.ts` | Script generation |
-| `/api/regenerate-scene` | `src/app/api/regenerate-scene/route.ts` | One scene regen |
+| `/api/rege-----|------|---------|
+| `/` | `src/app/page.tsx` | Main 4-step wizard |
+nerate-scene` | `src/app/api/regenerate-scene/route.ts` | One scene regen |
 | `/api/generate-image` | `src/app/api/generate-image/route.ts` | Image generation |
 | `/api/models` | `src/app/api/models/route.ts` | Model list proxy |
 | `/api/models/test` | `src/app/api/models/test/route.ts` | Key validation |
 
 ## Data flow
 
-`TopicInput/ImageInput` → `POST /api/generate-script` (OpenRouter) → `ScriptEditor` → `POST /api/generate-image` (Cloudflare FLUX) → `VideoPreview` (Canvas Ken Burns + captions + MediaRecorder MP4) → Supabase `videos/scenes` + Storage `uploads/` (inputs) / `renders/` (MP4s).
+`TopicInput/ImageInput` → `POST /api/generate-script` (OpenRouter) → `ScriptEditor` → `POST /api/generate-image` (Cloudflare FLUX) → `VideoPreview` (ffmpeg.wasm Ken Burns + concat + overlays) → Supabase `videos/scenes` + Storage `uploads/` (inputs) / `renders/` (MP4s).
 
 ## Supabase
 

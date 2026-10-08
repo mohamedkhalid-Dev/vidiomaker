@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { isSupabaseConfigured, supabase } from "./supabase";
+import { isSupabaseConfigured } from "./supabase";
 import { createSupabaseBrowserClient } from "./supabaseBrowser";
 
 export const MAGIC_LINK_COOLDOWN_SECONDS = 120;
@@ -35,7 +35,7 @@ function toFriendlyAuthError(err: unknown): string {
     lower.includes("too_many") ||
     lower.includes("429") ||
     lower.includes("email rate limit") ||
-    lower.includes("after ") && lower.includes("second")
+    (lower.includes("after ") && lower.includes("second"))
   ) {
     return "Email limit reached (Supabase default sender allows ~30 emails/hour). Wait about an hour, then tap Resend once. If this keeps happening, the project owner needs a custom SMTP sender.";
   }
@@ -77,6 +77,7 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const cooldownUntilRef = useRef(0);
   const cooldownTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const sendingRef = useRef(false);
 
   const tickCooldown = useCallback(() => {
     const remaining = Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000));
@@ -91,6 +92,7 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
   // accidentally spam resends and hit the project-wide email 429.
   useEffect(() => {
     try {
+      if (typeof window === "undefined" || typeof localStorage === "undefined") return;
       const stored = Number(localStorage.getItem(COOLDOWN_STORAGE_KEY) ?? 0);
       if (Number.isFinite(stored) && stored > Date.now()) {
         cooldownUntilRef.current = stored;
@@ -109,26 +111,38 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
       return;
     }
     let cancelled = false;
-    supabase.auth
-      .getUser()
-      .then(({ data }) => {
-        if (!cancelled) setUserEmail(data.user?.email ?? null);
-      })
-      .catch(() => {
-        if (!cancelled) setUserEmail(null);
-      })
-      .finally(() => {
-        if (!cancelled) setAuthLoading(false);
+    let unsubscribe: (() => void) | null = null;
+    try {
+      // Use the cookie-based browser client so state stays in sync with
+      // middleware + /auth/callback (single session source).
+      const client = createSupabaseBrowserClient();
+      client.auth
+        .getUser()
+        .then(({ data }) => {
+          if (!cancelled) setUserEmail(data.user?.email ?? null);
+        })
+        .catch(() => {
+          if (!cancelled) setUserEmail(null);
+        })
+        .finally(() => {
+          if (!cancelled) setAuthLoading(false);
+        });
+      const { data: listener } = client.auth.onAuthStateChange((_event, session) => {
+        if (!cancelled) {
+          setUserEmail(session?.user?.email ?? null);
+          setAuthLoading(false);
+        }
       });
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      unsubscribe = () => listener.subscription.unsubscribe();
+    } catch {
       if (!cancelled) {
-        setUserEmail(session?.user?.email ?? null);
+        setUserEmail(null);
         setAuthLoading(false);
       }
-    });
+    }
     return () => {
       cancelled = true;
-      listener.subscription.unsubscribe();
+      unsubscribe?.();
     };
   }, []);
 
@@ -142,7 +156,9 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
   const startCooldown = useCallback(() => {
     cooldownUntilRef.current = Date.now() + MAGIC_LINK_COOLDOWN_SECONDS * 1000;
     try {
-      localStorage.setItem(COOLDOWN_STORAGE_KEY, String(cooldownUntilRef.current));
+      if (typeof window !== "undefined" && typeof localStorage !== "undefined") {
+        localStorage.setItem(COOLDOWN_STORAGE_KEY, String(cooldownUntilRef.current));
+      }
     } catch {
       // ignore storage errors
     }
@@ -155,7 +171,9 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
     async (rawEmail: string) => {
       const fieldError = validateAuthEmail(rawEmail);
       if (fieldError) return { ok: false, message: fieldError, kind: "error" as const };
-      if (sending) return { ok: false, message: "Sending… please wait.", kind: "info" as const };
+      // Ref guard blocks rapid double-clicks before `sending` state re-renders.
+      if (sendingRef.current || sending)
+        return { ok: false, message: "Sending… please wait.", kind: "info" as const };
       const remaining = Math.max(0, Math.ceil((cooldownUntilRef.current - Date.now()) / 1000));
       if (remaining > 0) {
         return {
@@ -173,11 +191,14 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
         };
       }
       setSending(true);
+      sendingRef.current = true;
       try {
         const client = createSupabaseBrowserClient();
+        const redirectOrigin =
+          typeof window !== "undefined" && window.location?.origin ? window.location.origin : "";
         const { error } = await client.auth.signInWithOtp({
           email: rawEmail.trim(),
-          options: { emailRedirectTo: `${window.location.origin}/auth/callback` },
+          options: { emailRedirectTo: `${redirectOrigin}/auth/callback` },
         });
         if (error) throw error;
         startCooldown();
@@ -193,6 +214,7 @@ export function useMagicLinkAuth(): UseMagicLinkAuth {
         if (message.startsWith("Email limit reached")) startCooldown();
         return { ok: false, message, kind: "error" as const };
       } finally {
+        sendingRef.current = false;
         setSending(false);
       }
     },

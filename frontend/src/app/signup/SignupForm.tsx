@@ -116,10 +116,20 @@ export default function SignupForm({ next }: { next?: string }): React.ReactElem
 
   return (
     <div className="card">
-      <SocialLoginButton next={next} />
-      <p className="auth-msg" style={{ textAlign: "center", margin: "0.5rem 0" }}>
-        or sign up with email
-      </p>
+      {/* 1. Social signup is the primary entry — always on top (mirrors /login). */}
+      <SocialLoginButton next={next} label="Sign up with Google" />
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="or continue with email"
+        style={{ display: "flex", alignItems: "center", gap: "0.75rem", margin: "0.75rem 0" }}
+      >
+        <span aria-hidden="true" style={{ flex: "1 1 auto", borderTop: "1px solid currentColor", opacity: 0.25 }} />
+        <span className="auth-msg" style={{ margin: 0 }}>
+          or continue with email
+        </span>
+        <span aria-hidden="true" style={{ flex: "1 1 auto", borderTop: "1px solid currentColor", opacity: 0.25 }} />
+      </div>
       {!configured ? (
         <p role="note" className="error-box" style={{ marginTop: 0 }}>
           Auth not configured on this site (missing Supabase settings). The form is disabled.
@@ -136,10 +146,11 @@ export default function SignupForm({ next }: { next?: string }): React.ReactElem
         >
           <div style={{ display: "grid", gap: "0.25rem" }}>
             <label htmlFor="signup-email" className="auth-label">
-              Email
+              Email address
             </label>
             <input
               id="signup-email"
+              name="email"
               type="email"
               autoComplete="email"
               required
@@ -161,6 +172,7 @@ export default function SignupForm({ next }: { next?: string }): React.ReactElem
             <div style={{ display: "flex", gap: "0.5rem" }}>
               <input
                 id="signup-password"
+                name="password"
                 type={showPassword ? "text" : "password"}
                 autoComplete="new-password"
                 required
@@ -188,6 +200,7 @@ export default function SignupForm({ next }: { next?: string }): React.ReactElem
             </label>
             <input
               id="signup-confirm"
+              name="confirmPassword"
               type={showPassword ? "text" : "password"}
               autoComplete="new-password"
               required
@@ -218,7 +231,7 @@ export default function SignupForm({ next }: { next?: string }): React.ReactElem
           {notice}
         </p>
       ) : null}
-      <p className="auth-msg" style={{ marginTop: "0.75rem" }}>
+      <p className="auth-msg" style={{ marginTop: "0.75rem", textAlign: "center" }}>
         Already have an account? <Link href={loginHref}>Log in</Link>
       </p>
     </div>

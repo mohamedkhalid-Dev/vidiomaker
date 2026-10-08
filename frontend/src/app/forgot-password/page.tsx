@@ -16,7 +16,7 @@ export default function ForgotPasswordPage(): React.ReactElement {
       aria-labelledby="forgot-heading"
       style={{ maxWidth: "28rem", margin: "0 auto" }}
     >
-      <h1 id="forgot-heading">Forgot password</h1>
+      <h1 id="forgot-heading">Reset your password</h1>
       <p className="auth-msg" style={{ marginBottom: "1rem" }}>
         Enter your account email and we’ll send you a link to set a new password.
       </p>
