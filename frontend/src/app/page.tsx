@@ -22,6 +22,7 @@ import {
   readStoredImageSteps,
 } from "../lib/cloudflare";
 import { MODEL_STORAGE_KEY } from "../lib/openrouter";
+import { loadTopicDraft } from "../lib/types";
 import {
   clearCustomInstructions,
   loadCustomInstructions,
@@ -244,10 +245,23 @@ export default function CreatePage() {
       : null;
 
   // Hydrate persisted models (ModelPicker + ImageModelPicker persist on select) +
-  // saved custom instructions (Settings page writes the same keys).
+  // saved custom instructions (Settings page writes the same keys) +
+  // Step 1 draft (idea + video settings) so a reload keeps the form.
   useEffect(() => {
     setSelectedModel(readPersistedModel());
     setImageModel(readPersistedImageModel());
+    try {
+      const draft = loadTopicDraft();
+      if (draft.topic.trim().length > 0) setTopic(draft.topic);
+      if (draft.options.negativePrompt !== undefined) {
+        setNegativePrompt(draft.options.negativePrompt ?? "");
+      }
+      setSceneCount(draft.options.sceneCount);
+      setDurationPerScene(draft.options.duration);
+      setAspect(draft.options.aspect);
+    } catch {
+      // Storage unavailable — defaults stand.
+    }
     try {
       const stored = loadCustomInstructions();
       setCreative({

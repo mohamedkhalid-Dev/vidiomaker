@@ -1,12 +1,14 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import type { VideoAspect, VideoOptions } from "../lib/types";
 import {
   MAX_SCENE_COUNT,
   MAX_SCENE_DURATION,
   MIN_SCENE_COUNT,
   MIN_SCENE_DURATION,
+  loadTopicDraft,
+  saveTopicDraft,
 } from "../lib/types";
 
 // Re-export for consumers that import the type from the component.
@@ -80,25 +82,62 @@ export default function TopicInput({
   isSubmitting = false,
   onSubmit,
 }: TopicInputProps): React.ReactElement {
-  const [topic, setTopic] = useState(initialTopic);
-  const [negativePrompt, setNegativePrompt] = useState(
-    initialOptions.negativePrompt ?? "",
-  );
-  const [sceneCount, setSceneCount] = useState(
-    clampInt(initialOptions.sceneCount ?? 5, MIN_SCENE_COUNT, MAX_SCENE_COUNT, 5),
-  );
-  const [duration, setDuration] = useState(
+  // Draft restore: explicit props (last submitted wizard values) win;
+  // otherwise fall back to the localStorage draft so a reload keeps
+  // "Describe your idea" + "Video settings (optional)".
+  function getStoredDraft(): { topic: string; opts: Partial<VideoOptions> } {
+    try {
+      const draft = loadTopicDraft();
+      return { topic: draft.topic, opts: draft.options };
+    } catch {
+      return { topic: "", opts: {} };
+    }
+  }
+
+  const [topic, setTopic] = useState(() => {
+    if (initialTopic.trim().length > 0) return initialTopic;
+    return getStoredDraft().topic;
+  });
+  const [negativePrompt, setNegativePrompt] = useState(() => {
+    if (initialOptions.negativePrompt !== undefined)
+      return initialOptions.negativePrompt ?? "";
+    return getStoredDraft().opts.negativePrompt ?? "";
+  });
+  const [sceneCount, setSceneCount] = useState(() =>
     clampInt(
-      initialOptions.duration ?? 5,
+      initialOptions.sceneCount ?? getStoredDraft().opts.sceneCount ?? 5,
+      MIN_SCENE_COUNT,
+      MAX_SCENE_COUNT,
+      5,
+    ),
+  );
+  const [duration, setDuration] = useState(() =>
+    clampInt(
+      initialOptions.duration ?? getStoredDraft().opts.duration ?? 5,
       MIN_SCENE_DURATION,
       MAX_SCENE_DURATION,
       5,
     ),
   );
-  const [aspect, setAspect] = useState<VideoAspect>(
-    initialOptions.aspect === "1920x1080" ? "1920x1080" : "1080x1920",
-  );
+  const [aspect, setAspect] = useState<VideoAspect>(() => {
+    const fromProps = initialOptions.aspect;
+    if (fromProps === "1920x1080" || fromProps === "1080x1920")
+      return fromProps;
+    const stored = getStoredDraft().opts.aspect;
+    return stored === "1920x1080" ? "1920x1080" : "1080x1920";
+  });
   const [error, setError] = useState<string | null>(null);
+
+  // Autosave the draft on every change — reload-safe, no button needed.
+  useEffect(() => {
+    const cleanNegative = negativePrompt.trim();
+    saveTopicDraft(topic, {
+      sceneCount,
+      duration,
+      aspect,
+      ...(cleanNegative.length > 0 ? { negativePrompt: cleanNegative } : {}),
+    });
+  }, [topic, negativePrompt, sceneCount, duration, aspect]);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>): void {
     event.preventDefault();
