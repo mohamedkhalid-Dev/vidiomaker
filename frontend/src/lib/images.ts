@@ -407,3 +407,92 @@ export function busyRetryMessage(failed: number[], total: number): string {
   if (failed.length === 0) return cloudflareSceneMessage(false);
   return cloudflareSceneMessage(false, failed[0] + 1, total);
 }
+
+/**
+ * Agent 2 — single-image remake with an explicit (possibly AI-rewritten) prompt.
+ *
+ * Thin DRY wrapper over `regenerateSceneImage()` (same fetch → Storage-upload
+ * path, same return shape). Persisting to `scenes` is the caller's job via
+ * `persistSceneImage()` — mirroring `regenerateSceneImage` so the page keeps
+ * its merge-only-idx pattern (`setImageUrls` / `setScenes` / `setImageStatuses`
+ * per idx, never a full-map reset).
+ *
+ * Uploads/library safety: this helper never decides what to overwrite — the
+ * caller does. Convention (same as `handleImageRetry` / `handleImageRegen` in
+ * `app/page.tsx`): when the user explicitly remakes a library-assigned scene
+ * (seed NULL, `libraryOverrides[idx]` set), the caller clears
+ * `libraryOverrides[idx]` on success — the explicit AI still replaces the
+ * library picture and Revert no longer applies. Custom `uploads/` pictures are
+ * only replaced when the user explicitly presses Remake on that card; the
+ * bulk pass (`generateAllSceneImages`) still skips every non-empty URL via
+ * `hasSceneImage()`, so frozen scenes never refetch.
+ */
+export async function remakeSceneImageWithPrompt(
+  newPrompt: string,
+  opts: RegenerateSceneImageOptions & { seed: number }
+): Promise<{ imageUrl: string; seed: number }> {
+  const { seed: rawSeed, ...rest } = opts;
+  const seed = Math.floor(rawSeed);
+  const model = normalizeImageModel(rest.model ?? CLOUDFLARE_DEFAULT_MODEL);
+  // eslint-disable-next-line no-console
+  console.info(
+    `[images] single remake idx=${rest.storageIdx ?? "?"} seed=${seed} model=${model}`
+  );
+  return regenerateSceneImage(newPrompt, seed, rest);
+}
+
+/**
+ * Agent 2 — params-object variant of the single-image remake. Resolves the
+ * seed from `seedMode` (`"new"` = fresh `randomImageSeed()`, `"same"` = reuse
+ * `existingSeed` when finite, else a fresh seed) then delegates to
+ * `remakeSceneImageWithPrompt()` (which delegates to `regenerateSceneImage()`).
+ * `currentPrompt` is accepted for logging / future diffing only — `newPrompt`
+ * is what gets rendered. Never loops scenes; other idx values are untouched.
+ */
+export interface RemakeSingleSceneImageParams {
+  currentPrompt: string;
+  newPrompt: string;
+  seedMode: "new" | "same";
+  existingSeed: number | null;
+  videoId?: string;
+  w?: number;
+  h?: number;
+  model?: string;
+  steps?: number;
+  storageIdx?: number;
+  sceneIdx?: number;
+  sceneTotal?: number;
+}
+
+export async function remakeSingleSceneImage(
+  params: RemakeSingleSceneImageParams
+): Promise<{ imageUrl: string; seed: number }> {
+  const {
+    newPrompt,
+    seedMode,
+    existingSeed,
+    videoId,
+    w,
+    h,
+    model,
+    steps,
+    storageIdx,
+    sceneIdx,
+    sceneTotal,
+  } = params;
+  const seed =
+    seedMode === "same" && typeof existingSeed === "number" && Number.isFinite(existingSeed)
+      ? Math.floor(existingSeed)
+      : randomImageSeed();
+  return remakeSceneImageWithPrompt(newPrompt, {
+    seed,
+    videoId,
+    w,
+    h,
+    model,
+    steps,
+    storageIdx,
+    sceneIdx,
+    sceneTotal,
+  });
+}

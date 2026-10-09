@@ -39,6 +39,7 @@ import {
   randomImageSeed,
   regenerateSceneImage,
 } from "../lib/images";
+import { rewriteImagePrompt } from "../lib/rewritePrompt";
 import {
   assignLibraryImage,
   isLibrarySelection,
@@ -229,6 +230,20 @@ export default function CreatePage() {
   const [imagesLoading, setImagesLoading] = useState(false);
   const [imagesError, setImagesError] = useState<string | null>(null);
 
+  // --- Agent 2: single-image remake (one disliked card only, rest frozen) ---
+  // `remakingIdx` = card currently fetching its replacement still (others stay
+  // interactive). `rewritingIdx` = card whose prompt Agent 1 is AI-rewriting
+  // (owned by the rewrite flow; kept here so ImageGrid props stay wired).
+  // `promptDrafts[idx]` = edited/new AI prompt per scene (falls back to
+  // scenes[idx].imagePrompt when untouched). `remakeErrors[idx]` = per-card
+  // friendly failure for the single remake (global banner stays clear).
+  const [remakingIdx, setRemakingIdx] = useState<number | null>(null);
+  const [rewritingIdx, setRewritingIdx] = useState<number | null>(null);
+  const [promptDrafts, setPromptDrafts] = useState<Record<number, string>>({});
+  const [remakeErrors, setRemakeErrors] = useState<Record<number, string | null>>(
+    {},
+  );
+
   // --- Agent 5: library-image integration ---
   // The picker-selected image ({ url, id }) waiting to be assigned, plus
   // per-scene overrides (scene currently shows a library still). Overrides
@@ -383,6 +398,11 @@ export default function CreatePage() {
       setImagesError(null);
       setUsedModelId(model);
       setSceneErrors({});
+      // Single-remake drafts follow the script — fresh story = fresh drafts.
+      setPromptDrafts({});
+      setRemakeErrors({});
+      setRemakingIdx(null);
+      setRewritingIdx(null);
       setActiveStepIdx(1);
     } catch (err) {
       // Network failures become the retry hint; 401/429/422 pass through
@@ -421,6 +441,13 @@ export default function CreatePage() {
           scene.idx === idx ? { ...scene, ...patch } : scene,
         ),
       );
+      // Keep the Images-step draft in sync when the prompt text changes
+      // (script edit or AI script regen) — otherwise the card would show
+      // a stale draft while scenes[idx] already changed.
+      if (patch.imagePrompt !== undefined) {
+        const clean = patch.imagePrompt.trim();
+        setPromptDrafts((prev) => ({ ...prev, [idx]: clean }));
+      }
     },
     [],
   );
@@ -469,6 +496,11 @@ export default function CreatePage() {
               : scene,
           ),
         );
+        // Sync the Images-step draft when the script regen rewrote the prompt.
+        if (typeof patch.imagePrompt === "string" && patch.imagePrompt.trim().length > 0) {
+          const freshPrompt = patch.imagePrompt.trim();
+          setPromptDrafts((prev) => ({ ...prev, [idx]: freshPrompt }));
+        }
         if (keepsLibraryImage && videoId) {
           const kept = libraryOverrides[idx];
           // Fire-and-forget: restores image_url + NULL seed on the row the
@@ -792,6 +824,196 @@ export default function CreatePage() {
     [videoId, aspect, imageModel, scenes, libraryOverrides],
   );
 
+  /**
+   * Agent 2 — apply an edited / AI-rewritten prompt to scene `idx` ONLY.
+   * Updates `scenes[idx].imagePrompt` + `promptDrafts[idx]`; the still stays
+   * untouched (`imageUrls` / `imageStatuses` never change here) until the user
+   * presses Remake. A library override is kept — the prompt change alone does
+   * not clear the library picture; only an explicit AI remake does.
+   */
+  const handleRewritePrompt = useCallback((idx: number, newPrompt: string) => {
+    const clean = newPrompt.trim();
+    if (clean.length === 0) return;
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.idx === idx ? { ...scene, imagePrompt: clean } : scene,
+      ),
+    );
+    setPromptDrafts((prev) => ({ ...prev, [idx]: clean }));
+    setRemakeErrors((prev) => ({ ...prev, [idx]: null }));
+  }, []);
+
+  /**
+   * Agent 2 — remake ONLY scene `idx` with its draft prompt
+   * (`promptDrafts[idx] ?? scenes[idx].imagePrompt`). Default is a fresh
+   * `randomImageSeed()`; pass `{ seedMode: "same" }` to keep the scene seed
+   * (deterministic retry of the new prompt). Merge-only-idx: `setImageUrls`,
+   * `setScenes` (preserving narration/duration), `setImageStatuses` touch
+   * just `idx`; all other scenes stay frozen (bulk generate still skips every
+   * non-empty URL via `hasSceneImage`). On success an existing
+   * `libraryOverrides[idx]` is cleared (explicit AI remake replaces the
+   * library still); on failure only `idx` flips to failed with a friendly
+   * per-card message. `rewritingIdx` is owned by the Agent 1 AI-rewrite flow
+   * (card whose prompt is being rewritten); `remakingIdx` / `promptDrafts` /
+   * `remakeErrors` below are Agent 3's ImageGrid wiring props (left unwired
+   * here — Agent 3 connects the card buttons, no wizard restructure).
+   */
+  const handleRemakeSingleImage = useCallback(
+    async (idx: number, opts?: { seedMode?: "new" | "same" }) => {
+      const target = scenes.find((scene) => scene.idx === idx);
+      if (!target) return;
+      const newPrompt = (promptDrafts[idx] ?? target.imagePrompt).trim();
+      if (newPrompt.length === 0) {
+        setRemakeErrors((prev) => ({
+          ...prev,
+          [idx]: "Please describe the scene image first.",
+        }));
+        return;
+      }
+      const seedMode = opts?.seedMode ?? "new";
+      const currentSeed =
+        typeof target.seed === "number"
+          ? target.seed
+          : Number(target.seed) || null;
+      const newSeed =
+        seedMode === "same" && typeof currentSeed === "number"
+          ? currentSeed
+          : randomImageSeed();
+      setRemakingIdx(idx);
+      setImageStatuses((prev) => ({ ...prev, [idx]: "loading" }));
+      setRemakeErrors((prev) => ({ ...prev, [idx]: null }));
+      try {
+        const [w, h] = aspect === "1920x1080" ? [1920, 1080] : [1080, 1920];
+        const model = normalizeImageModel(imageModel || readPersistedImageModel());
+        const position = scenes.findIndex((scene) => scene.idx === idx);
+        // eslint-disable-next-line no-console
+        console.info(
+          `[images] single remake idx=${idx} seed=${newSeed} model=${model}`
+        );
+        const { imageUrl } = await regenerateSceneImage(newPrompt, newSeed, {
+          videoId: videoId ?? undefined,
+          w,
+          h,
+          model,
+          steps: readPersistedImageSteps(),
+          storageIdx: idx,
+          sceneIdx: position + 1,
+          sceneTotal: scenes.length,
+        });
+        if (videoId) await persistSceneImage(videoId, idx, imageUrl, newSeed);
+        setImageUrls((prev) => ({ ...prev, [idx]: imageUrl }));
+        // Preserve narration/duration — only the prompt + seed change.
+        setScenes((prev) =>
+          prev.map((scene) =>
+            scene.idx === idx
+              ? { ...scene, imagePrompt: newPrompt, seed: newSeed }
+              : scene,
+          ),
+        );
+        setPromptDrafts((prev) => ({ ...prev, [idx]: newPrompt }));
+        setImageStatuses((prev) => ({ ...prev, [idx]: "ready" }));
+        // Explicit AI remake replaces the library still (same convention as
+        // handleImageRetry / handleImageRegen); Revert no longer applies.
+        if (libraryOverrides[idx] !== undefined) {
+          setLibraryOverrides((prev) => {
+            const next = { ...prev };
+            delete next[idx];
+            return next;
+          });
+        }
+        setRemakeErrors((prev) => ({ ...prev, [idx]: null }));
+      } catch (err) {
+        setImageStatuses((prev) => ({ ...prev, [idx]: "failed" }));
+        setRemakeErrors((prev) => ({
+          ...prev,
+          [idx]: toUserMessage(
+            err,
+            "Cloudflare timed out. Please retry this scene."
+          ),
+        }));
+      } finally {
+        setRemakingIdx((prev) => (prev === idx ? null : prev));
+      }
+    },
+    [
+      videoId,
+      aspect,
+      imageModel,
+      scenes,
+      libraryOverrides,
+      promptDrafts,
+    ],
+  );
+
+  // NOTE (Agent 2 → Agent 3): `remakingIdx`, `rewritingIdx`, `promptDrafts`,
+  // `remakeErrors`, `handleRewritePrompt(idx, newPrompt)` and
+  // `handleRemakeSingleImage(idx, { seedMode })` are intentionally left unwired
+  // in the <ImageGrid> JSX below — Agent 3 connects the card buttons via props
+  // (e.g. onRewrite/onRemake → these handlers). No wizard restructure here.
+
+  const handlePromptDraftChange = useCallback((idx: number, text: string) => {
+    // Live draft first so typing never lags; scenes merge only when non-empty
+    // so an intermediate empty textarea doesn't wipe the stored prompt.
+    // Still idx-only — other scenes untouched.
+    setPromptDrafts((prev) => ({ ...prev, [idx]: text }));
+    const clean = text.trim();
+    if (clean.length === 0) return;
+    setScenes((prev) =>
+      prev.map((scene) =>
+        scene.idx === idx ? { ...scene, imagePrompt: clean } : scene,
+      ),
+    );
+    setRemakeErrors((prev) => ({ ...prev, [idx]: null }));
+  }, []);
+
+  const handleAiRewrite = useCallback(
+    async (idx: number) => {
+      const target = scenes.find((scene) => scene.idx === idx);
+      if (!target) return;
+      // Single-flight: one AI rewrite at a time, others stay interactive.
+      setRewritingIdx(idx);
+      setRemakeErrors((prev) => ({ ...prev, [idx]: null }));
+      try {
+        const currentPrompt = (promptDrafts[idx] ?? target.imagePrompt).trim();
+        if (currentPrompt.length === 0) {
+          throw new Error("Please describe the scene image first.");
+        }
+        const model = (selectedModel || readPersistedModel()).trim();
+        const { imagePrompt: fresh } = await rewriteImagePrompt({
+          idx,
+          imagePrompt: currentPrompt,
+          narration: target.narration,
+          topic: topic.trim() || undefined,
+          stylePreset: creative.stylePreset.trim() || undefined,
+          tone: creative.tone.trim() || undefined,
+          aspect: aspect === "1920x1080" ? "1920x1080" : "1080x1920",
+          model: model || usedModelId || undefined,
+        });
+        handleRewritePrompt(idx, fresh);
+      } catch (err) {
+        setRemakeErrors((prev) => ({
+          ...prev,
+          [idx]:
+            err instanceof Error
+              ? err.message
+              : "Could not rewrite this prompt. Please retry.",
+        }));
+      } finally {
+        setRewritingIdx((prev) => (prev === idx ? null : prev));
+      }
+    },
+    [
+      scenes,
+      promptDrafts,
+      topic,
+      creative,
+      aspect,
+      selectedModel,
+      usedModelId,
+      handleRewritePrompt,
+    ],
+  );
+
   const canGoBack = activeStepIdx > 0;
   const canGoNext = activeStepIdx < STEPS.length - 1;
   const progressPct = Math.round(((activeStepIdx + 1) / STEPS.length) * 100);
@@ -1064,6 +1286,13 @@ export default function CreatePage() {
                 libraryOverrides={libraryOverrides}
                 onLibraryAssign={(idx) => void handleLibraryAssign(idx)}
                 onLibraryRevert={(idx) => void handleLibraryRevert(idx)}
+                promptDrafts={promptDrafts}
+                onPromptDraftChange={handlePromptDraftChange}
+                onAiRewrite={(idx) => void handleAiRewrite(idx)}
+                onRemakeSingle={(idx) => void handleRemakeSingleImage(idx)}
+                rewritingIdx={rewritingIdx}
+                remakingIdx={remakingIdx}
+                remakeErrors={remakeErrors}
               />
             )}
             {/* Agent 5 — library image picker bridge (the full picker UI lives

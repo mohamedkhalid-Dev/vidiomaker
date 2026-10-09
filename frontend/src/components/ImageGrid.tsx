@@ -66,6 +66,22 @@ export interface ImageGridProps {
   onLibraryAssign?: (idx: number) => void;
   /** Restore scene `idx` to its pre-library still (parent persists). */
   onLibraryRevert?: (idx: number) => void;
+  /**
+   * Agent 3 — per-scene prompt editing + single-scene remake (all optional
+   * so existing callers keep compiling). Parent owns:
+   * - `promptDrafts[idx]` = edited text (falls back to scene.imagePrompt),
+   * - `onAiRewrite(idx)` = Agent1 rewrite of that scene's draft,
+   * - `onRemakeSingle(idx)` = Agent2 regenerate of ONLY that scene.
+   * `rewritingIdx` / `remakingIdx` mark the single active card (others stay
+   * interactive); `remakeErrors[idx]` surfaces a per-card failure.
+   */
+  promptDrafts?: Record<number, string>;
+  onPromptDraftChange?: (idx: number, prompt: string) => void;
+  onAiRewrite?: (idx: number) => void;
+  onRemakeSingle?: (idx: number) => void;
+  rewritingIdx?: number | null;
+  remakingIdx?: number | null;
+  remakeErrors?: Record<number, string | null>;
 }
 
 function isFailed(scene: ImageGridScene): boolean {
@@ -86,6 +102,13 @@ export default function ImageGrid({
   libraryOverrides = {},
   onLibraryAssign,
   onLibraryRevert,
+  promptDrafts,
+  onPromptDraftChange,
+  onAiRewrite,
+  onRemakeSingle,
+  rewritingIdx = null,
+  remakingIdx = null,
+  remakeErrors = {},
 }: ImageGridProps) {
   const horizontal = aspect === "1920x1080";
 
@@ -116,6 +139,23 @@ export default function ImageGrid({
           !libraryActive;
         const canRevertLibrary =
           libraryActive && typeof onLibraryRevert === "function";
+        // Agent 3 — single-flight flags. Only the active card shows a
+        // spinner; other cards keep their existing buttons enabled (only
+        // the two NEW buttons gate on anySingleBusy to avoid overlapping
+        // AI calls).
+        const canEditPrompt = typeof onPromptDraftChange === "function";
+        const canAiRewrite = typeof onAiRewrite === "function";
+        const canRemakeSingle = typeof onRemakeSingle === "function";
+        const isRewriting = rewritingIdx === scene.idx;
+        const isRemaking = remakingIdx === scene.idx;
+        const anySingleBusy = rewritingIdx !== null || remakingIdx !== null;
+        const rewriteDisabled = loading || anySingleBusy;
+        const remakeDisabled = loading || anySingleBusy;
+        const cardError =
+          canRemakeSingle && typeof remakeErrors?.[scene.idx] === "string"
+            ? (remakeErrors?.[scene.idx] as string)
+            : null;
+        const draftValue = promptDrafts?.[scene.idx] ?? scene.imagePrompt;
         return (
           <article key={scene.idx} className="vm-scene-card" role="listitem" aria-label={`Scene ${scene.idx + 1}`}>
             <div className="vm-scene-media">
@@ -170,7 +210,60 @@ export default function ImageGrid({
               {/* Plain-text render: React escapes this, safe against XSS. */}
               <p className="vm-prompt">{scene.imagePrompt}</p>
 
+              {/* Agent 3 — per-scene prompt edit (plain-text textarea, React-escaped). */}
+              {canEditPrompt ? (
+                <label
+                  className="vm-prompt-label"
+                  htmlFor={`vm-prompt-edit-${scene.idx}`}
+                >
+                  <span>What viewers see (edit then Remake only this)</span>
+                  <textarea
+                    id={`vm-prompt-edit-${scene.idx}`}
+                    className="vm-textarea"
+                    value={draftValue}
+                    rows={3}
+                    onChange={(e) => onPromptDraftChange?.(scene.idx, e.target.value)}
+                    aria-label={`Edit image prompt for scene ${scene.idx + 1}`}
+                  />
+                </label>
+              ) : null}
+
               <div className="vm-actions">
+                {/* Agent 3 — new single-scene actions (optional; existing buttons below untouched). */}
+                {canAiRewrite ? (
+                  <button
+                    type="button"
+                    className="vm-btn"
+                    onClick={() => onAiRewrite?.(scene.idx)}
+                    disabled={rewriteDisabled}
+                    aria-busy={isRewriting}
+                    aria-label={
+                      isRewriting
+                        ? `Rewriting scene ${scene.idx + 1} prompt`
+                        : `AI rewrite prompt for scene ${scene.idx + 1}`
+                    }
+                    title="Improves only this scene's prompt"
+                  >
+                    {isRewriting ? "Rewriting…" : "AI Rewrite prompt"}
+                  </button>
+                ) : null}
+                {canRemakeSingle ? (
+                  <button
+                    type="button"
+                    className="vm-btn vm-btn-primary"
+                    onClick={() => onRemakeSingle?.(scene.idx)}
+                    disabled={remakeDisabled}
+                    aria-busy={isRemaking}
+                    aria-label={
+                      isRemaking
+                        ? `Remaking scene ${scene.idx + 1} image`
+                        : `Remake only scene ${scene.idx + 1} image`
+                    }
+                    title="Regenerates only this scene, others stay still"
+                  >
+                    {isRemaking ? "Remaking…" : "Remake only this image"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="vm-btn"
@@ -216,6 +309,21 @@ export default function ImageGrid({
                   </button>
                 ) : null}
               </div>
+              {/* Agent 3 — per-card remake failure (plain text, React-escaped). */}
+              {cardError ? (
+                <div className="vm-error" role="alert">
+                  <span>{cardError}</span>
+                  <button
+                    type="button"
+                    className="vm-btn"
+                    onClick={() => onRemakeSingle?.(scene.idx)}
+                    disabled={remakeDisabled}
+                    aria-label={`Retry remake for scene ${scene.idx + 1}`}
+                  >
+                    Retry
+                  </button>
+                </div>
+              ) : null}
             </div>
           </article>
         );
@@ -249,8 +357,15 @@ const GRID_STYLES = `
 .vm-seed-badge { font-size: 0.8rem; color: #9E9E9E; border: 1px solid #2A2A2A; background: #1A1A1A; border-radius: 999px; padding: 0.2rem 0.65rem; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .vm-library-badge { position: absolute; top: 0.6rem; right: 0.6rem; font-size: 0.75rem; font-weight: 600; color: #000; background: #D4D4D4; border-radius: 999px; padding: 0.25rem 0.7rem; white-space: nowrap; }
 .vm-prompt { color: #B8B8B8; font-size: 0.9rem; line-height: 1.45; margin: 0; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.vm-prompt-label { display: grid; gap: 0.35rem; font-size: 0.85rem; color: #9E9E9E; }
+.vm-textarea { width: 100%; min-height: 44px; padding: 0.6rem 0.7rem; border-radius: 8px; border: 1px solid #2A2A2A; background: #000; color: #B8B8B8; font-size: 0.9rem; line-height: 1.5; box-sizing: border-box; resize: vertical; }
 .vm-actions { display: flex; gap: 0.6rem; flex-wrap: wrap; }
 .vm-btn { background: #1A1A1A; color: #B8B8B8; border: 1px solid #2A2A2A; border-radius: 8px; padding: 0.65rem 1.1rem; min-height: 44px; min-width: 44px; cursor: pointer; font-size: 1rem; }
 .vm-btn:hover { border-color: #D4D4D4; color: #D4D4D4; }
 .vm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.vm-btn-primary { background: #E8E8E8; border-color: #E8E8E8; color: #000; font-weight: 600; }
+.vm-btn-primary:hover { background: #FFFFFF; border-color: #FFFFFF; color: #000; }
+.vm-btn:focus-visible, .vm-textarea:focus-visible { outline: 2px solid #D4D4D4; outline-offset: 2px; }
+.vm-error { display: grid; gap: 0.5rem; background: #1A1A1A; border: 1px solid #6B3333; color: #E8B4B4; border-radius: 8px; padding: 0.7rem; font-size: 0.9rem; line-height: 1.45; overflow-wrap: anywhere; }
+@media (prefers-reduced-motion: reduce) { .vm-shimmer { animation: none; } }
 `;
