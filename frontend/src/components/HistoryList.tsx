@@ -273,6 +273,8 @@ export default function HistoryList(): React.ReactElement {
                   className="button vm-btn-primary"
                   href={downloadUrl}
                   download
+                  target="_blank"
+                  rel="noopener noreferrer"
                   aria-label={`Download ${video.title || video.topic || "video"} (MP4)`}
                 >
                   Download

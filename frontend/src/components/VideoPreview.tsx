@@ -449,10 +449,19 @@ export default function VideoPreview({
         )}
         {showFinalVideo && videoUrl && (
           <>
+            {videoUrl.startsWith("blob:") ? (
+              <p className="vm-vp-note" role="status">
+                Temporary preview for this tab only — it was not saved to
+                Supabase. Download it now, then log in and re-render to keep
+                it in History.
+              </p>
+            ) : null}
             <a
               className="vm-vp-btn vm-vp-primary vm-vp-link"
               href={videoUrl}
               download="final.mp4"
+              target="_blank"
+              rel="noopener noreferrer"
               aria-label="Download rendered MP4"
             >
               Download MP4

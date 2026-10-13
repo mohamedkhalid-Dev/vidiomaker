@@ -955,9 +955,15 @@ export async function startRender(
   }
 
   // Upload to the `renders/` bucket; when Storage rejects the write (e.g.
-  // missing bucket/policy), fall back to a local object URL so the <video>
-  // preview + download still work in this session.
+  // anonymous visitor — anon has no storage policies), fall back to a local
+  // object URL so the <video> preview + download still work in this session.
+  // The row is then marked `failed` (not `done`): recording render_path for
+  // an object that was never uploaded creates phantom done rows whose
+  // History Download 404s forever. The in-tab snapshot below still resolves
+  // `done` with the blob URL, so this session's preview + download keep
+  // working; only the persisted row tells the truth for later.
   let videoUrl: string | null = null;
+  let uploaded = false;
   try {
     const { error: uploadError } = await supabase.storage
       .from(RENDERS_BUCKET)
@@ -970,6 +976,7 @@ export async function startRender(
       });
     if (uploadError) throw new Error(uploadError.message);
     videoUrl = publicRenderUrl(videoId);
+    uploaded = true;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.warn("[render] Storage upload skipped, using a local preview URL.", err);
@@ -980,21 +987,34 @@ export async function startRender(
     }
   }
 
-  await tryMarkVideoRow(videoId, {
-    status: "done",
-    progress: 100,
-    render_path: `${RENDERS_BUCKET}/${storagePathFor(videoId)}`,
-    // Best-effort forward-compat: ignored when the column does not exist
-    // (supabase/schema.sql tracks render_path; see tryMarkVideoRow).
-    video_url: videoUrl,
-  });
+  if (uploaded) {
+    await tryMarkVideoRow(videoId, {
+      status: "done",
+      progress: 100,
+      render_path: `${RENDERS_BUCKET}/${storagePathFor(videoId)}`,
+      video_url: videoUrl,
+    });
+
+    return {
+      status: "done",
+      videoUrl,
+      message: "Render complete. Your video is ready to preview and download.",
+      progress: 100,
+      raw: { video_id: videoId, render_path: `${RENDERS_BUCKET}/${storagePathFor(videoId)}` },
+    };
+  }
+
+  const localMessage =
+    "Rendered for this tab only — the MP4 could not be saved to Supabase " +
+    "(log in, then re-render to keep it in History). Download below works here and now.";
+  await tryMarkVideoRow(videoId, { status: "failed", error_log: localMessage });
 
   return {
     status: "done",
     videoUrl,
-    message: "Render complete. Your video is ready to preview and download.",
+    message: localMessage,
     progress: 100,
-    raw: { video_id: videoId, render_path: `${RENDERS_BUCKET}/${storagePathFor(videoId)}` },
+    raw: { video_id: videoId, local_only: true },
   };
 }
 
