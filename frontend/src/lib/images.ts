@@ -57,6 +57,14 @@ export interface SceneImageResult {
   idx: number;
   image_url: string;
   seed: number;
+  /**
+   * True when the still was uploaded to Storage AND scenes.image_url was
+   * updated — i.e. it survives a reload / shows in History. False means the
+   * URL is an in-memory `blob:` preview (anonymous/RLS-rejected write):
+   * it renders this session but vanishes afterwards. Callers must surface
+   * unsaved results instead of showing them as done.
+   */
+  persisted: boolean;
 }
 
 export interface GenerateAllSceneImagesResult {
@@ -263,13 +271,18 @@ async function generateOneSceneImage(
   // No deterministic public URL exists for Cloudflare (bytes only) —
   // use an in-memory object URL when Storage upload / DB update is
   // unavailable (e.g. anonymous visitor). It lasts for this tab session.
+  // `persisted` stays false in that case so the UI warns instead of
+  // presenting a temporary preview as saved.
   let imageUrl = URL.createObjectURL(blob);
+  let persisted = false;
   if (videoId) {
+    let uploaded = false;
     try {
       imageUrl = await uploadBlobToSupabase(
         blob,
         storagePathFor(videoId, scene.idx, blob)
       );
+      uploaded = true;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.warn(
@@ -277,9 +290,11 @@ async function generateOneSceneImage(
       );
       // Keep the object URL so the card still previews this session.
     }
-    await persistSceneImage(videoId, scene.idx, imageUrl, scene.seed);
+    if (uploaded) {
+      persisted = await persistSceneImage(videoId, scene.idx, imageUrl, scene.seed);
+    }
   }
-  return { idx: scene.idx, image_url: imageUrl, seed: scene.seed };
+  return { idx: scene.idx, image_url: imageUrl, seed: scene.seed, persisted };
 }
 
 /**
@@ -315,7 +330,10 @@ export async function generateAllSceneImages(
     if (hasSceneImage(existing)) {
       // Custom-upload skip + resume-safe + library-assign skip: keep the
       // stored still untouched (never re-fetched, never overwritten).
-      images.push({ idx: scene.idx, image_url: existing, seed: scene.seed });
+      // Only http(s) URLs are durable (Storage/DB-backed); blob: previews
+      // from an unsaved earlier pass are still ephemeral.
+      const durable = /^https?:\/\//.test(existing);
+      images.push({ idx: scene.idx, image_url: existing, seed: scene.seed, persisted: durable });
       done += 1;
       options.onProgress?.(done, total);
       continue;

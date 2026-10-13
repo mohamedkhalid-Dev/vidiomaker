@@ -721,6 +721,18 @@ export default function CreatePage() {
         setImagesError(
           `Cloudflare busy, retrying scene ${result.failed.map((i) => i + 1).join(", ")}... Tap Retry on failed cards.`,
         );
+      } else {
+        // Saved-looking but ephemeral: generation worked, Supabase writes
+        // did not (logged out / RLS-rejected). blob: previews vanish on
+        // reload and History stays empty — say so now, not later.
+        const unsaved = result.images.filter((img) => !img.persisted).length;
+        if (unsaved > 0) {
+          setImagesError(
+            videoId
+              ? `${unsaved} picture${unsaved === 1 ? "" : "s"} NOT saved to Supabase (showing temporary previews that vanish on reload). Log in (header → Log in), then press “Make pictures” again to save them.`
+              : `${unsaved} picture${unsaved === 1 ? "" : "s"} ready as temporary previews only (no video saved yet). Generate the script while logged in, then make pictures again to keep them.`,
+          );
+        }
       }
     } catch (err) {
       setImagesError(
@@ -782,7 +794,14 @@ export default function CreatePage() {
             sceneTotal: scenes.length,
           }
         );
-        if (videoId) await persistSceneImage(videoId, idx, imageUrl, seed);
+        if (videoId) {
+          const saved = await persistSceneImage(videoId, idx, imageUrl, seed);
+          if (!saved) {
+            setImagesError(
+              "Picture updated but NOT saved to Supabase (temporary preview — vanishes on reload). Log in, then Retry this scene again.",
+            );
+          }
+        }
         setImageUrls((prev) => ({ ...prev, [idx]: imageUrl }));
         setImageStatuses((prev) => ({ ...prev, [idx]: "ready" }));
       } catch (err) {
@@ -832,7 +851,14 @@ export default function CreatePage() {
             sceneTotal: scenes.length,
           }
         );
-        if (videoId) await persistSceneImage(videoId, idx, imageUrl, newSeed);
+        if (videoId) {
+          const saved = await persistSceneImage(videoId, idx, imageUrl, newSeed);
+          if (!saved) {
+            setImagesError(
+              "Picture updated but NOT saved to Supabase (temporary preview — vanishes on reload). Log in, then Regen this scene again.",
+            );
+          }
+        }
         setImageUrls((prev) => ({ ...prev, [idx]: imageUrl }));
         // Fresh seed from the client so the same prompt+model reproduces it.
         setScenes((prev) =>
@@ -924,7 +950,16 @@ export default function CreatePage() {
           sceneIdx: position + 1,
           sceneTotal: scenes.length,
         });
-        if (videoId) await persistSceneImage(videoId, idx, imageUrl, newSeed);
+        if (videoId) {
+          const saved = await persistSceneImage(videoId, idx, imageUrl, newSeed);
+          if (!saved) {
+            setRemakeErrors((prev) => ({
+              ...prev,
+              [idx]:
+                "Picture updated but NOT saved to Supabase (temporary preview — vanishes on reload). Log in, then remake this scene again.",
+            }));
+          }
+        }
         setImageUrls((prev) => ({ ...prev, [idx]: imageUrl }));
         // Preserve narration/duration — only the prompt + seed change.
         setScenes((prev) =>
