@@ -31,6 +31,7 @@ import {
 } from "../lib/customInstructions";
 import {
   generateScriptWithOptions,
+  persistVideoClientSide,
   regenerateScriptScene,
 } from "../lib/api";
 import {
@@ -390,6 +391,29 @@ export default function CreatePage() {
       setScenes(result.scenes);
       setVideoTitle(result.title);
       setVideoId(result.videoId ?? null);
+      // Automatic save: when the route could not persist server-side
+      // (no service-role key), insert videos+scenes with the logged-in
+      // user's JWT so History + Images/Render have a DB parent. A
+      // login-required failure keeps the script on screen (nothing wiped)
+      // and surfaces the action — retry Generate after logging in.
+      if (result.videoId && !result.persisted) {
+        try {
+          await persistVideoClientSide(
+            result.videoId,
+            result.title,
+            cleanTopic,
+            model,
+            result.scenes,
+          );
+        } catch (persistErr) {
+          setError(
+            toUserMessage(
+              persistErr,
+              "Script is ready but auto-save needs a login. Log in, then press Generate again — nothing is lost.",
+            ),
+          );
+        }
+      }
       setImageUrls({});
       setImageStatuses({});
       setLibraryOverrides({});

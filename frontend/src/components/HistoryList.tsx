@@ -265,16 +265,25 @@ export default function HistoryList(): React.ReactElement {
               </div>
             ) : null}
 
-            {/* One primary action (Download); the rest stay secondary. */}
+            {/* One primary action (Download) once rendered; before that the
+                card states the next step instead of linking a 404 MP4. */}
             <div className="vm-history-actions">
-              <a
-                className="button vm-btn-primary"
-                href={downloadUrl}
-                download
-                aria-label={`Download ${video.title || video.topic || "video"} (MP4)`}
-              >
-                Download
-              </a>
+              {video.status === "done" ? (
+                <a
+                  className="button vm-btn-primary"
+                  href={downloadUrl}
+                  download
+                  aria-label={`Download ${video.title || video.topic || "video"} (MP4)`}
+                >
+                  Download
+                </a>
+              ) : (
+                <p role="note" style={{ color: "#808080", fontSize: 14, margin: 0, lineHeight: 1.5 }}>
+                  {video.status === "failed"
+                    ? "Render failed — open More → Regenerate."
+                    : "Not rendered yet — generate images, then render."}
+                </p>
+              )}
               <details className="vm-more">
                 <summary>More</summary>
                 <div className="vm-more-actions">

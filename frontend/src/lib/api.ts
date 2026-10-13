@@ -358,6 +358,8 @@ export interface GenerateScriptFullResult {
   title: string;
   scenes: EditorSceneDraft[];
   videoId?: string;
+  /** True when the route persisted videos+scenes server-side (service-role). */
+  persisted?: boolean;
 }
 
 const API_KEY_STORAGE_KEY = "vidiomaker.openrouter_key";
@@ -552,7 +554,59 @@ export async function generateScriptWithOptions(
     (data as { video_id?: unknown }).video_id ??
     (data as { videoId?: unknown }).videoId;
   const videoId = typeof rawId === "string" && rawId.length > 0 ? rawId : undefined;
-  return { title, scenes, videoId };
+  const persisted =
+    (payload as { persisted?: unknown }).persisted === true ||
+    (data as { persisted?: unknown }).persisted === true;
+  return { title, scenes, videoId, persisted };
+}
+
+/**
+ * Automatic client-side fallback: insert the videos + scenes rows with the
+ * logged-in user's JWT when the route could not persist server-side
+ * (`persisted: false` — no SUPABASE_SERVICE_ROLE_KEY configured, or the
+ * server write failed). Called automatically by the wizard right after
+ * generateScriptWithOptions, so History always gets the row and later
+ * Images/Render steps have a DB parent. Throws a friendly login-required
+ * error when RLS rejects the write (anonymous visitors are select-only).
+ */
+export async function persistVideoClientSide(
+  videoId: string,
+  title: string,
+  topic: string,
+  model: string,
+  scenes: EditorSceneDraft[],
+): Promise<void> {
+  requireSupabaseConfigured();
+  const cleanId = videoId.trim();
+  if (cleanId.length === 0) throw new Error("No video to save yet.");
+  const { data: userData } = await supabase.auth.getUser();
+  if (!userData.user) {
+    throw new Error(
+      "Log in to auto-save (header → Log in / Sign up). Your script is kept on screen — it will save on the next Generate once logged in.",
+    );
+  }
+  const { error: videoError } = await supabase.from("videos").insert({
+    id: cleanId,
+    title,
+    topic,
+    model_id: model,
+    status: "draft",
+  });
+  if (videoError) throw new Error(`Could not auto-save this video (${videoError.message}). Please retry.`);
+  if (scenes.length > 0) {
+    const { error: scenesError } = await supabase.from("scenes").insert(
+      scenes.map((scene) => ({
+        video_id: cleanId,
+        idx: scene.idx,
+        narration: scene.narration,
+        image_prompt: scene.imagePrompt,
+        seed: scene.seed,
+        image_url: null,
+        duration: scene.duration,
+      })),
+    );
+    if (scenesError) throw new Error(`Video saved but scenes were not (${scenesError.message}). Please retry.`);
+  }
 }
 
 export interface RegenerateScriptSceneParams {
